@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emergency Response Route Optimizer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            grid-template-rows: 70px 1fr;
+            height: 100vh;
+            gap: 0;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            padding: 0 2rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #d63031;
+            font-size: 1.8rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header .status {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #00b894;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .sidebar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            overflow-y: auto;
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .map-container {
+            position: relative;
+            background: #f8f9fa;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .emergency-form {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .emergency-form h3 {
+            color: #d63031;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.3rem;
+            font-weight: 600;
+            color: #2d3436;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.8rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #d63031;
+            box-shadow: 0 0 0 3px rgba(214, 48, 49, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #d63031, #e17055);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(214, 48, 49, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-panel {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-bottom: 1rem;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .results-panel h4 {
+            color: #2d3436;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 600;
+            color: #636e72;
+        }
+
+        .metric-value {
+            font-weight: 700;
+            color: #2d3436;
+        }
+
+        .metric-value.time {
+            color: #d63031;
+        }
+
+        .metric-value.distance {
+            color: #0984e3;
+        }
+
+        .metric-value.saved {
+            color: #00b894;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .loading i {
+            font-size: 2rem;
+            color: #d63031;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .route-options {
+            margin-top: 1rem;
+        }
+
+        .route-option {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .route-option:hover {
+            background: rgba(255, 255, 255, 0.9);
+            transform: translateX(5px);
+        }
+
+        .route-option.selected {
+            background: rgba(214, 48, 49, 0.1);
+            border: 2px solid #d63031;
+        }
+
+        .map-controls {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .map-btn {
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            padding: 0.7rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .map-btn:hover {
+            background: white;
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: 70px auto 1fr;
+            }
+
+            .sidebar {
+                max-height: 40vh;
+                overflow-y: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <i class="fas fa-ambulance"></i>
+                Emergency Response Route Optimizer
+            </h1>
+            <div class="status">
+                <div class="status-indicator"></div>
+                <span id="system-status">System Online</span>
+                <span id="current-time"></span>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="emergency-form">
+                <h3>
+                    <i class="fas fa-phone-alt"></i>
+                    Emergency Call
+                </h3>
+                
+                <div class="alert" id="alert"></div>
+                
+                <form id="emergency-form">
+                    <div class="form-group">
+                        <label for="latitude">Latitude</label>
+                        <input type="number" id="latitude" step="any" value="12.9716" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="longitude">Longitude</label>
+                        <input type="number" id="longitude" step="any" value="77.5946" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="condition">Patient Condition</label>
+                        <select id="condition" required>
+                            <option value="general">General Emergency</option>
+                            <option value="cardiac">Cardiac Emergency</option>
+                            <option value="stroke">Stroke</option>
+                            <option value="trauma">Trauma</option>
+                            <option value="respiratory">Respiratory</option>
+                            <option value="pediatric">Pediatric</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="priority">Priority Level</label>
+                        <select id="priority" required>
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="age">Patient Age</label>
+                        <input type="number" id="age" min="0" max="150" value="45">
+                    </div>
+                    
+                    <button type="submit" class="btn" id="optimize-btn">
+                        <i class="fas fa-route"></i>
+                        Optimize Route
+                    </button>
+                </form>
+            </div>
+            
+            <div class="loading" id="loading">
+                <i class="fas fa-spinner"></i>
+                <p>Optimizing emergency response...</p>
+            </div>
+            
+            <div class="results-panel" id="results" style="display: none;">
+                <h4>
+                    <i class="fas fa-hospital"></i>
+                    Recommended Hospital
+                </h4>
+                <div id="hospital-info"></div>
+                
+                <h4 style="margin-top: 1.5rem;">
+                    <i class="fas fa-route"></i>
+                    Optimal Route
+                </h4>
+                <div id="route-info"></div>
+                
+                <div class="route-options" id="route-options">
+                    <h4>
+                        <i class="fas fa-list"></i>
+                        Alternative Routes
+                    </h4>
+                    <div id="alternative-routes"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <div class="map-controls">
+                <button class="map-btn" id="center-map" title="Center on Bengaluru">
+                    <i class="fas fa-crosshairs"></i>
+                </button>
+                <button class="map-btn" id="toggle-traffic" title="Toggle Traffic">
+                    <i class="fas fa-traffic-light"></i>
+                </button>
+                <button class="map-btn" id="toggle-hospitals" title="Toggle Hospitals">
+                    <i class="fas fa-hospital"></i>
+                </button>
+            </div>
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([12.9716, 77.5946], 12);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Map layers
+        let currentRoute = null;
+        let hospitalMarkers = [];
+        let emergencyMarker = null;
+
+        // Sample hospital locations
+        const hospitals = [
+            {name: 'Manipal Hospital Whitefield', lat: 12.9698, lon: 77.7500},
+            {name: 'Apollo Hospital Bannerghatta', lat: 12.9056, lon: 77.5936},
+            {name: 'Fortis Hospital Cunningham Road', lat: 12.9926, lon: 77.5985},
+            {name: 'Narayana Health City', lat: 12.8539, lon: 77.6648},
+            {name: 'St. Johns Medical College', lat: 12.9279, lon: 77.6271}
+        ];
+
+        // Add hospital markers
+        function showHospitals() {
+            hospitals.forEach(hospital => {
+                const marker = L.marker([hospital.lat, hospital.lon], {
+                    icon: L.divIcon({
+                        html: '<i class="fas fa-hospital" style="color: #0984e3; font-size: 20px;"></i>',
+                        iconSize: [30, 30],
+                        className: 'hospital-marker'
+                    })
+                }).addTo(map);
+                
+                marker.bindPopup(`<b>${hospital.name}</b><br>Emergency Services Available`);
+                hospitalMarkers.push(marker);
+            });
+        }
+
+        // Initialize hospitals on map
+        showHospitals();
+
+        // Update current time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleTimeString();
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Emergency form handling
+        document.getElementById('emergency-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                call_id: `EMG_${Date.now()}`,
+                latitude: parseFloat(document.getElementById('latitude').value),
+                longitude: parseFloat(document.getElementById('longitude').value),
+                condition: document.getElementById('condition').value,
+                priority: document.getElementById('priority').value,
+                age: parseInt(document.getElementById('age').value) || 45,
+                address: 'Emergency Location',
+                call_time: new Date().toISOString()
+            };
+
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('optimize-btn').disabled = true;
+
+            try {
+                // Clear previous route
+                if (currentRoute) {
+                    map.removeLayer(currentRoute);
+                }
+                if (emergencyMarker) {
+                    map.removeLayer(emergencyMarker);
+                }
+
+                // Add emergency marker
+                emergencyMarker = L.marker([formData.latitude, formData.longitude], {
+                    icon: L.divIcon({
+                        html: '<i class="fas fa-exclamation-triangle" style="color: #d63031; font-size: 24px;"></i>',
+                        iconSize: [30, 30],
+                        className: 'emergency-marker'
+                    })
+                }).addTo(map);
+
+                emergencyMarker.bindPopup(`<b>Emergency Location</b><br>${formData.condition} - ${formData.priority} priority`);
+
+                // Simulate API call (replace with actual API call)
+                const response = await simulateEmergencyResponse(formData);
+                
+                if (response.status === 'success') {
+                    displayResults(response.data);
+                    drawRoute(response.data);
+                    showAlert('Emergency response optimized successfully!', 'success');
+                } else {
+                    showAlert('Error optimizing emergency response: ' + response.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('Failed to optimize emergency response', 'error');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('optimize-btn').disabled = false;
+            }
+        });
+
+        // Simulate emergency response (replace with actual API call)
+        async function simulateEmergencyResponse(emergencyData) {
+            // Simulate API delay
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Find nearest hospital
+            const emergencyLat = emergencyData.latitude;
+            const emergencyLon = emergencyData.longitude;
+            
+            let nearestHospital = hospitals[0];
+            let minDistance = Infinity;
+            
+            hospitals.forEach(hospital => {
+                const distance = getDistance(emergencyLat, emergencyLon, hospital.lat, hospital.lon);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestHospital = hospital;
+                }
+            });
+            
+            // Simulate optimized response
+            const baseTime = minDistance * 2.5; // Approximate minutes
+            const weatherFactor = Math.random() * 0.3 + 0.9; // 0.9-1.2
+            const trafficFactor = Math.random() * 0.5 + 1.0; // 1.0-1.5
+            const emergencyFactor = 0.7; // Emergency vehicle advantage
+            
+            const estimatedTime = baseTime * weatherFactor * trafficFactor * emergencyFactor;
+            const normalTime = baseTime * weatherFactor * trafficFactor;
+            
+            return {
+                status: 'success',
+                data: {
+                    call_id: emergencyData.call_id,
+                    recommended_hospital: {
+                        name: nearestHospital.name,
+                        location: {
+                            latitude: nearestHospital.lat,
+                            longitude: nearestHospital.lon
+                        },
+                        current_wait_time: Math.floor(Math.random() * 30) + 10
+                    },
+                    optimal_route: {
+                        distance_km: minDistance,
+                        estimated_time: estimatedTime,
+                        time_saved: normalTime - estimatedTime,
+                        confidence: 0.85 + Math.random() * 0.1,
+                        coordinates: [
+                            [emergencyLat, emergencyLon],
+                            [nearestHospital.lat, nearestHospital.lon]
+                        ]
+                    },
+                    current_conditions: {
+                        weather: Math.random() > 0.7 ? 'Rain' : 'Clear',
+                        traffic_level: Math.random() > 0.5 ? 'Heavy' : 'Moderate',
+                        temperature: Math.floor(Math.random() * 15) + 20
+                    },
+                    eta: new Date(Date.now() + estimatedTime * 60000).toISOString()
+                }
+            };
+        }
+
+        function displayResults(data) {
+            const hospitalInfo = document.getElementById('hospital-info');
+            const routeInfo = document.getElementById('route-info');
+            
+            hospitalInfo.innerHTML = `
+                <div class="metric">
+                    <span class="metric-label">Hospital Name</span>
+                    <span class="metric-value">${data.recommended_hospital.name}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Wait Time</span>
+                    <span class="metric-value time">${data.recommended_hospital.current_wait_time} min</span>
+                </div>
+            `;
+            
+            routeInfo.innerHTML = `
+                <div class="metric">
+                    <span class="metric-label">Travel Time</span>
+                    <span class="metric-value time">${data.optimal_route.estimated_time.toFixed(1)} min</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Distance</span>
+                    <span class="metric-value distance">${data.optimal_route.distance_km.toFixed(1)} km</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Time Saved</span>
+                    <span class="metric-value saved">${data.optimal_route.time_saved.toFixed(1)} min</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Confidence</span>
+                    <span class="metric-value">${(data.optimal_route.confidence * 100).toFixed(1)}%</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">ETA</span>
+                    <span class="metric-value time">${new Date(data.eta).toLocaleTimeString()}</span>
+                </div>
+            `;
+            
+            document.getElementById('results').style.display = 'block';
+        }
+
+        function drawRoute(data) {
+            if (currentRoute) {
+                map.removeLayer(currentRoute);
+            }
+            
+            const coordinates = data.optimal_route.coordinates;
+            
+            currentRoute = L.polyline(coordinates, {
+                color: '#d63031',
+                weight: 6,
+                opacity: 0.8,
+                dashArray: '10, 5'
+            }).addTo(map);
+            
+            // Fit map to show entire route
+            const group = new L.featureGroup([currentRoute, emergencyMarker]);
+            map.fitBounds(group.getBounds().pad(0.1));
+            
+            // Add route popup
+            currentRoute.bindPopup(`
+                <b>Optimized Emergency Route</b><br>
+                Distance: ${data.optimal_route.distance_km.toFixed(1)} km<br>
+                Time: ${data.optimal_route.estimated_time.toFixed(1)} minutes<br>
+                To: ${data.recommended_hospital.name}
+            `);
+        }
+
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert');
+            alert.className = `alert ${type}`;
+            alert.textContent = message;
+            alert.style.display = 'block';
+            
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 5000);
+        }
+
+        // Map controls
+        document.getElementById('center-map').addEventListener('click', function() {
+            map.setView([12.9716, 77.5946], 12);
+        });
+
+        document.getElementById('toggle-hospitals').addEventListener('click', function() {
+            hospitalMarkers.forEach(marker => {
+                if (map.hasLayer(marker)) {
+                    map.removeLayer(marker);
+                } else {
+                    map.addTo(marker);
+                }
+            });
+        });
+
+        // Click on map to set emergency location
+        map.on('click', function(e) {
+            document.getElementById('latitude').value = e.latlng.lat.toFixed(6);
+            document.getElementById('longitude').value = e.latlng.lng.toFixed(6);
+            
+            if (emergencyMarker) {
+                map.removeLayer(emergencyMarker);
+            }
+            
+            emergencyMarker = L.marker([e.latlng.lat, e.latlng.lng], {
+                icon: L.divIcon({
+                    html: '<i class="fas fa-map-marker-alt" style="color: #d63031; font-size: 24px;"></i>',
+                    iconSize: [30, 30],
+                    className: 'temp-marker'
+                })
+            }).addTo(map);
+            
+            emergencyMarker.bindPopup('Click "Optimize Route" to find best path to hospital');
+        });
+
+        // Utility functions
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth's radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Add some sample traffic incidents for visualization
+        function addTrafficIncidents() {
+            const incidents = [
+                {lat: 12.9344, lon: 77.6101, type: 'accident', severity: 'major'},
+                {lat: 12.9500, lon: 77.6200, type: 'construction', severity: 'moderate'}
+            ];
+            
+            incidents.forEach(incident => {
+                const color = incident.severity === 'major' ? '#e74c3c' : '#f39c12';
+                const icon = incident.type === 'accident' ? 'car-crash' : 'hard-hat';
+                
+                L.marker([incident.lat, incident.lon], {
+                    icon: L.divIcon({
+                        html: `<i class="fas fa-${icon}" style="color: ${color}; font-size: 16px;"></i>`,
+                        iconSize: [20, 20],
+                        className: 'incident-marker'
+                    })
+                }).addTo(map).bindPopup(`${incident.type} - ${incident.severity} severity`);
+            });
+        }
+
+        // Initialize
+        addTrafficIncidents();
+
+        // Auto-refresh system status
+        setInterval(async function() {
+            try {
+                // In real implementation, call API to check system status
+                // For demo, just update the indicator
+                const statusElement = document.getElementById('system-status');
+                statusElement.textContent = 'System Online';
+            } catch (error) {
+                document.getElementById('system-status').textContent = 'System Error';
+            }
+        }, 30000);
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                document.getElementById('emergency-form').dispatchEvent(new Event('submit'));
+            }
+        });
+
+        console.log('🚨 Emergency Response Route Optimizer Loaded');
+        console.log('Click on the map to set emergency location');
+        console.log('Use Ctrl+Enter to quickly submit emergency form');
+    </script>
+
+    <style>
+        .hospital-marker, .emergency-marker, .temp-marker, .incident-marker {
+            background: none !important;
+            border: none !important;
+        }
+        
+        .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .leaflet-popup-content {
+            margin: 12px 16px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        /* Custom route animation */
+        @keyframes route-animation {
+            0% { stroke-dashoffset: 20; }
+            100% { stroke-dashoffset: 0; }
+        }
+        
+        .leaflet-interactive {
+            animation: route-animation 2s linear infinite;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 300px 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: 70px 40vh 1fr;
+            }
+            
+            .sidebar {
+                padding: 1rem;
+            }
+            
+            .emergency-form {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 1.4rem;
+            }
+            
+            .form-group {
+                margin-bottom: 0.8rem;
+            }
+            
+            .btn {
+                padding: 0.8rem 1.5rem;
+                font-size: 0.9rem;
+            }
+        }
+        
+        /* Loading animation */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        /* Success/Error states */
+        .metric-value.success {
+            color: #00b894;
+            font-weight: 700;
+        }
+        
+        .metric-value.warning {
+            color: #fdcb6e;
+            font-weight: 700;
+        }
+        
+        .metric-value.danger {
+            color: #e74c3c;
+            font-weight: 700;
+        }
+        
+        /* Smooth transitions */
+        * {
+            transition: all 0.3s ease;
+        }
+        
+        /* Glass morphism effects */
+        .emergency-form, .results-panel {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        
+        /* Hover effects */
+        .metric:hover {
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 5px;
+            padding: 0.5rem;
+            margin: 0 -0.5rem;
+        }
+    </style>
+</body>
+</html>
